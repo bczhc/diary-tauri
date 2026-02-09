@@ -1,6 +1,21 @@
 // Prevents additional console window on Windows in release, DO NOT REMOVE!!
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-fn main() {
-    diary_tauri_lib::run()
+use std::env;
+use anyhow::anyhow;
+use clap::Parser;
+
+fn main() -> anyhow::Result<()> {
+    unsafe {
+        if env::var("WAYLAND_DISPLAY").is_ok() {
+            env::set_var("GDK_BACKEND", "wayland");
+        }
+    }
+
+    let args = diary_tauri_lib::cli::Args::parse();
+    if !args.db_path.exists() {
+        return Err(anyhow!("Diary database not exist"));
+    }
+    diary_tauri_lib::run(args);
+    Ok(())
 }
