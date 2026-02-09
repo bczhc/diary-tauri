@@ -13,9 +13,6 @@ fn main() -> anyhow::Result<()> {
     }
 
     let args = diary_tauri_lib::cli::Args::parse();
-    if !args.db_path.exists() {
-        return Err(anyhow!("Diary database not exist"));
-    }
     diary_tauri_lib::run(args);
     Ok(())
 }

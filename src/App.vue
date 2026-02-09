@@ -5,7 +5,7 @@
       <div v-if="!isUnlocked" key="login" class="auth-container">
         <div class="auth-card">
           <div class="icon">🌿</div>
-          <h1>个人日记存根</h1>
+          <h1>个人日记</h1>
           <p class="subtitle">请输入访问密钥以解密数据库</p>
           <div class="input-group">
             <input
@@ -28,8 +28,14 @@
           <div class="sidebar-header">
             <div class="title-area">
               <h2>历程</h2>
-              <span class="count">{{ dateList.length }} 篇</span>
+              <div class="action-btns">
+                <span class="count">{{ dateList.length }} 篇</span>
+                <button v-on:click="openNewDiaryModal" class="create-btn" title="撰写新篇章">
+                  <span>+</span>
+                </button>
+              </div>
             </div>
+
             <div class="search-bar">
               <input
                   v-model="searchQuery"
@@ -46,7 +52,7 @@
                 :key="date"
                 class="date-card"
                 v-on:click="handleDateClick(date)"
-                :class="{ 'active-card': selectedDate === date }"
+                v-bind:class="{ 'active-card': selectedDate === date }"
             >
               <div class="calendar-box">
                 <span class="day-num">{{ date.toString().substring(6, 8) }}</span>
@@ -90,27 +96,51 @@
                 </div>
               </div>
             </div>
+
+            <!-- 编辑模式：标准 Textarea -->
             <textarea
+                v-if="isEditing"
                 v-model="currentContent"
-                :readonly="!isEditing"
-                class="diary-textarea"
+                class="diary-textarea editing-active"
                 :style="{ fontSize: fontSize + 'px' }"
-                :placeholder="isEditing ? '开始记录今天的生活...' : '无内容'"
+                placeholder="开始记录今天的生活..."
+                v-on:keydown.tab.prevent="handleTabSave"
+                ref="editorRef"
             ></textarea>
+
+            <!-- 预览模式：支持搜索高亮的 Div，移除背景 -->
+            <div
+                v-else
+                class="diary-textarea preview-active"
+                :style="{ fontSize: fontSize + 'px' }"
+                v-html="highlightContent(currentContent, searchQuery)"
+            ></div>
           </div>
           <div v-else class="empty-state">
             <div class="empty-icon">📖</div>
-            <p>已解锁，请选择日期</p>
+            <p>已解锁</p>
           </div>
         </main>
       </div>
 
     </transition>
+
+    <!-- 新建日记 Modal -->
+    <div v-if="showNewDiaryModal" class="modal-overlay">
+      <div class="modal">
+        <h3>选择日期</h3>
+        <input type="date" v-model="modalDate" />
+        <div class="modal-actions">
+          <button v-on:click="closeNewDiaryModal">取消</button>
+          <button v-on:click="confirmNewDiary">确定</button>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
 <script setup>
-import { ref, onUnmounted, watch } from 'vue';
+import { ref, onUnmounted, watch, nextTick } from 'vue';
 import { invoke } from '@tauri-apps/api/core';
 
 const password = ref('');
@@ -121,6 +151,10 @@ const error = ref('');
 const dateList = ref([]);
 const selectedDate = ref(null);
 const currentContent = ref('');
+const editorRef = ref(null);
+
+const showNewDiaryModal = ref(false);
+const modalDate = ref('');
 
 const fontSize = ref(16);
 
@@ -135,13 +169,78 @@ let wordCountTimeout = null;
 watch(currentContent, (newVal) => {
   if (wordCountTimeout) clearTimeout(wordCountTimeout);
   wordCountTimeout = setTimeout(() => {
-    if (!newVal || newVal === '正在读取...') {
+    if (!newVal) {
       displayWordCount.value = 0;
     } else {
       displayWordCount.value = Array.from(newVal).length;
     }
   }, 300);
 }, { immediate: true });
+
+// 正文搜索高亮逻辑 (仅用于预览)
+const highlightContent = (text, query) => {
+  if (!text) return '';
+  let escaped = text
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#039;")
+      .replace(/\n/g, '<br>');
+
+  if (!query) return escaped;
+
+  try {
+    const regex = new RegExp(`(${query})`, 'gi');
+    return escaped.replace(regex, '<span style="color: #e74c3c; font-weight: bold; background-color: rgba(231, 76, 60, 0.1); padding: 0 2px; border-radius: 2px;">$1</span>');
+  } catch (e) {
+    return escaped;
+  }
+};
+
+const handleTabSave = async () => {
+  if (isEditing.value) {
+    await toggleEditMode();
+  }
+};
+
+const openNewDiaryModal = () => {
+  modalDate.value = '';
+  showNewDiaryModal.value = true;
+};
+
+const closeNewDiaryModal = () => {
+  showNewDiaryModal.value = false;
+};
+
+const confirmNewDiary = async () => {
+  if (!modalDate.value) return;
+  const formattedDate = parseInt(modalDate.value.replace(/-/g, ''));
+  showNewDiaryModal.value = false;
+
+  if (dateList.value.includes(formattedDate)) {
+    await handleDateClick(formattedDate);
+    return;
+  }
+
+  selectedDate.value = formattedDate;
+  currentContent.value = '';
+  lastSavedContent.value = '';
+
+  try {
+    await invoke('save_diary_content', {
+      date: formattedDate,
+      content: ''
+    });
+    const dates = await invoke('search_diary', { queryStr: searchQuery.value });
+    dateList.value = dates;
+    isEditing.value = true;
+    startAutoSave();
+    nextTick(() => editorRef.value?.focus());
+  } catch (err) {
+    console.error("Failed to create entry:", err);
+  }
+};
 
 const adjustFontSize = (delta) => {
   const next = fontSize.value + delta;
@@ -216,6 +315,7 @@ const toggleEditMode = async () => {
   } else {
     isEditing.value = true;
     startAutoSave();
+    nextTick(() => editorRef.value?.focus());
   }
 };
 
@@ -235,20 +335,16 @@ const stopAutoSave = () => {
 
 const handleDateClick = async (date) => {
   if (selectedDate.value === date) return;
-
   if (isEditing.value) {
     await saveDiary();
     stopAutoSave();
     isEditing.value = false;
   }
-
   await loadDiaryContent(date);
 };
 
 const loadDiaryContent = async (date) => {
   selectedDate.value = date;
-  currentContent.value = '正在读取...';
-
   try {
     const content = await invoke('get_diary_content', { date: date });
     currentContent.value = content;
@@ -275,6 +371,8 @@ onUnmounted(() => {
   stopAutoSave();
 });
 </script>
+
+
 
 <style>
 :root {
@@ -331,9 +429,18 @@ button {
   display: flex; flex-direction: column; flex-shrink: 0;
 }
 .sidebar-header { padding: 24px 20px 16px; display: flex; flex-direction: column; gap: 16px; }
-.title-area { display: flex; justify-content: space-between; align-items: baseline; }
+.title-area { display: flex; justify-content: space-between; align-items: center; }
 .title-area h2 { margin: 0; font-size: 20px; }
+.action-btns { display: flex; align-items: center; gap: 8px; }
 .count { font-size: 12px; color: var(--text-sub); }
+
+.create-btn {
+  width: 28px; height: 28px; padding: 0; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 18px; line-height: 1; background: var(--primary-color); color: white;
+  transition: transform 0.2s;
+}
+.create-btn:hover { transform: scale(1.1); }
 
 .search-bar input {
   width: 100%; box-sizing: border-box; padding: 10px 14px; font-size: 13px;
@@ -403,10 +510,20 @@ button {
   line-height: 1.8; color: #444; outline: none;
   font-family: inherit; width: 100%; transition: background 0.3s, font-size 0.2s;
 }
-.diary-textarea:not([readonly]) {
-  background: rgba(255,255,255,0.4);
+
+/* 仅在编辑模式下显示背景和内边距 */
+.editing-active {
+  background: rgba(255, 255, 255, 0.4);
   padding: 10px;
   border-radius: 8px;
+}
+
+/* 预览模式下完全透明且自适应 */
+.preview-active {
+  background: transparent;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  word-wrap: break-word;
 }
 
 .empty-state { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; color: var(--text-sub); }
@@ -416,4 +533,38 @@ button {
 .fade-enter-from { opacity: 0; transform: translateY(5px); }
 .fade-leave-to { opacity: 0; transform: translateY(-5px); }
 .error-msg { color: #e74c3c; font-size: 12px; margin-top: 15px; }
+
+.modal-overlay {
+  position: fixed;
+  top: 0; left: 0;
+  width: 100%; height: 100%;
+  background: rgba(44, 62, 80, 0.4);
+  backdrop-filter: blur(4px);
+  display: flex; align-items: center; justify-content: center;
+  z-index: 1000;
+  animation: fadeIn 0.3s ease;
+}
+
+.modal {
+  background: white; padding: 30px; border-radius: 20px;
+  width: 320px; box-shadow: 0 15px 40px rgba(0, 0, 0, 0.15);
+  text-align: center; animation: slideUp 0.3s ease;
+}
+
+.modal h3 { margin-top: 0; margin-bottom: 20px; font-size: 18px; color: var(--primary-color); letter-spacing: 1px; }
+.modal input[type="date"] {
+  width: 100%; box-sizing: border-box; padding: 12px; margin-bottom: 25px;
+  border: 1px solid var(--border-color); border-radius: 10px;
+  font-family: inherit; font-size: 15px; color: var(--text-main);
+  background: var(--input-bg); outline: none;
+}
+.modal input[type="date"]:focus { border-color: var(--primary-color); background: white; }
+
+.modal-actions { display: flex; gap: 12px; }
+.modal-actions button { flex: 1; padding: 10px; font-size: 14px; border-radius: 10px; transition: all 0.2s; }
+.modal-actions button:first-child { background: #eee; color: #666; }
+.modal-actions button:last-child { background: var(--primary-color); color: white; }
+
+@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+@keyframes slideUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
 </style>
