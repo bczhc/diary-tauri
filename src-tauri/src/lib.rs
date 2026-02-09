@@ -4,6 +4,8 @@ use crate::cli::Args;
 use rusqlite::{Connection, Row};
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
+use gtk::{EventBox, HeaderBar};
+use gtk::prelude::{BinExt, Cast, GtkWindowExt};
 use tauri::{command, Manager, State, WebviewUrl, WebviewWindowBuilder};
 
 #[derive(Default)]
@@ -116,6 +118,16 @@ pub fn run(args: Args) {
             win.eval("setTimeout('window.location.reload()', 100)")?;
 
             win.set_title(&title)?;
+            match win.gtk_window().unwrap().titlebar() {
+                Some(titlebar) => {
+                    // Wayland
+                    let event_box = titlebar.downcast::<EventBox>().unwrap();
+                    let header_bar = event_box.child().unwrap().downcast::<HeaderBar>().unwrap();
+                    use gtk::prelude::HeaderBarExt;
+                    header_bar.set_title(Some(&title));
+                }
+                None => (),
+            }
             Ok(())
         })
         .manage(States {
