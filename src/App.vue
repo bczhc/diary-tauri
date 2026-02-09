@@ -1,5 +1,5 @@
 <template>
-  <div class="app-wrapper">
+  <div class="app-wrapper" @click="closeContextMenu">
     <transition name="fade" mode="out-in">
 
       <div v-if="!isUnlocked" key="login" class="auth-container">
@@ -12,10 +12,10 @@
                 v-model="password"
                 type="password"
                 placeholder="Enter Key..."
-                v-on:keydown="handleKeydown"
+                @keydown="handleKeydown"
                 :class="{ 'input-error': error }"
             />
-            <button v-on:click="unlockDatabase" :disabled="loading">
+            <button @click="unlockDatabase" :disabled="loading">
               {{ loading ? '正在解密...' : '解锁' }}
             </button>
           </div>
@@ -30,7 +30,7 @@
               <h2>历程</h2>
               <div class="action-btns">
                 <span class="count">{{ dateList.length }} 篇</span>
-                <button v-on:click="openNewDiaryModal" class="create-btn" title="撰写新篇章">
+                <button @click="openNewDiaryModal" class="create-btn" title="撰写新篇章">
                   <span>+</span>
                 </button>
               </div>
@@ -41,7 +41,7 @@
                   v-model="searchQuery"
                   type="text"
                   placeholder="搜索日期或内容..."
-                  v-on:input="handleSearch"
+                  @input="handleSearch"
               />
             </div>
           </div>
@@ -51,8 +51,9 @@
                 v-for="date in dateList"
                 :key="date"
                 class="date-card"
-                v-on:click="handleDateClick(date)"
-                v-bind:class="{ 'active-card': selectedDate === date }"
+                @click="handleDateClick(date)"
+                @contextmenu.prevent="showContextMenu($event, date)"
+                :class="{ 'active-card': selectedDate === date }"
             >
               <div class="calendar-box">
                 <span class="day-num">{{ date.toString().substring(6, 8) }}</span>
@@ -82,14 +83,14 @@
 
               <div class="header-controls">
                 <div class="font-control">
-                  <button v-on:click="adjustFontSize(-2)" title="减小字号">A-</button>
+                  <button @click="adjustFontSize(-2)" title="减小字号">A-</button>
                   <span class="font-size-label">{{ fontSize }}px</span>
-                  <button v-on:click="adjustFontSize(2)" title="增大字号">A+</button>
+                  <button @click="adjustFontSize(2)" title="增大字号">A+</button>
                 </div>
 
                 <div
                     class="mode-toggle"
-                    v-on:click="toggleEditMode"
+                    @click="toggleEditMode"
                     :class="{ 'is-editing-mode': isEditing }"
                 >
                   <span class="mode-badge">{{ isEditing ? '编辑模式' : '预览模式' }}</span>
@@ -97,18 +98,16 @@
               </div>
             </div>
 
-            <!-- 编辑模式：标准 Textarea -->
             <textarea
                 v-if="isEditing"
                 v-model="currentContent"
                 class="diary-textarea editing-active"
                 :style="{ fontSize: fontSize + 'px' }"
                 placeholder="开始记录今天的生活..."
-                v-on:keydown.tab.prevent="handleTabSave"
+                @keydown.tab.prevent="handleTabSave"
                 ref="editorRef"
             ></textarea>
 
-            <!-- 预览模式：支持搜索高亮的 Div，移除背景 -->
             <div
                 v-else
                 class="diary-textarea preview-active"
@@ -125,14 +124,33 @@
 
     </transition>
 
+    <!-- 右键菜单 -->
+    <div v-if="contextMenu.visible" class="context-menu" :style="{ top: contextMenu.y + 'px', left: contextMenu.x + 'px' }">
+      <div class="menu-item delete" @click="openConfirmDelete">
+        <span class="menu-icon">🗑️</span> 删除日记
+      </div>
+    </div>
+
+    <!-- 删除确认弹窗 -->
+    <div v-if="showDeleteConfirm" class="modal-overlay">
+      <div class="modal">
+        <h3>确认删除</h3>
+        <p class="modal-text">确定要删除 {{ formatDate(targetDeleteDate) }} 的记录吗？此操作不可撤销。</p>
+        <div class="modal-actions">
+          <button @click="showDeleteConfirm = false">取消</button>
+          <button class="danger-btn" @click="confirmDelete">确认删除</button>
+        </div>
+      </div>
+    </div>
+
     <!-- 新建日记 Modal -->
     <div v-if="showNewDiaryModal" class="modal-overlay">
       <div class="modal">
         <h3>选择日期</h3>
         <input type="date" v-model="modalDate" />
         <div class="modal-actions">
-          <button v-on:click="closeNewDiaryModal">取消</button>
-          <button v-on:click="confirmNewDiary">确定</button>
+          <button @click="closeNewDiaryModal">取消</button>
+          <button @click="confirmNewDiary">确定</button>
         </div>
       </div>
     </div>
@@ -140,7 +158,7 @@
 </template>
 
 <script setup>
-import { ref, onUnmounted, watch, nextTick } from 'vue';
+import { ref, onMounted, onUnmounted, watch, nextTick } from 'vue';
 import { invoke } from '@tauri-apps/api/core';
 
 const password = ref('');
@@ -166,6 +184,18 @@ let autoSaveTimer = null;
 const displayWordCount = ref(0);
 let wordCountTimeout = null;
 
+// 右键菜单状态
+const contextMenu = ref({
+  visible: false,
+  x: 0,
+  y: 0,
+  targetDate: null
+});
+
+// 删除确认状态
+const showDeleteConfirm = ref(false);
+const targetDeleteDate = ref(null);
+
 watch(currentContent, (newVal) => {
   if (wordCountTimeout) clearTimeout(wordCountTimeout);
   wordCountTimeout = setTimeout(() => {
@@ -177,7 +207,6 @@ watch(currentContent, (newVal) => {
   }, 300);
 }, { immediate: true });
 
-// 正文搜索高亮逻辑 (仅用于预览)
 const highlightContent = (text, query) => {
   if (!text) return '';
   let escaped = text
@@ -201,6 +230,59 @@ const highlightContent = (text, query) => {
 const handleTabSave = async () => {
   if (isEditing.value) {
     await toggleEditMode();
+  }
+};
+
+const globalKeyHandler = (e) => {
+  if (e.key === 'Escape' && isUnlocked.value && !isEditing.value && !showNewDiaryModal.value && !showDeleteConfirm.value) {
+    selectedDate.value = null;
+    currentContent.value = '';
+  }
+};
+
+// 显示右键菜单
+const showContextMenu = (e, date) => {
+  contextMenu.value = {
+    visible: true,
+    x: e.clientX,
+    y: e.clientY,
+    targetDate: date
+  };
+};
+
+// 关闭右键菜单
+const closeContextMenu = () => {
+  contextMenu.value.visible = false;
+};
+
+// 打开删除确认
+const openConfirmDelete = () => {
+  targetDeleteDate.value = contextMenu.value.targetDate;
+  showDeleteConfirm.value = true;
+  closeContextMenu();
+};
+
+// 确认删除
+const confirmDelete = async () => {
+  if (!targetDeleteDate.value) return;
+
+  try {
+    // 调用后端删除接口
+    await invoke('delete_diary', { date: targetDeleteDate.value });
+
+    // 如果删除的是当前选中的，清空视图
+    if (selectedDate.value === targetDeleteDate.value) {
+      selectedDate.value = null;
+      currentContent.value = '';
+      stopAutoSave();
+      isEditing.value = false;
+    }
+
+    // 刷新列表
+    await handleSearch();
+    showDeleteConfirm.value = false;
+  } catch (err) {
+    console.error("删除失败:", err);
   }
 };
 
@@ -256,7 +338,7 @@ const handleKeydown = (event) => {
 };
 
 let searchTimeout = null;
-const handleSearch = () => {
+const handleSearch = async () => {
   if (searchTimeout) clearTimeout(searchTimeout);
   searchTimeout = setTimeout(async () => {
     try {
@@ -355,24 +437,29 @@ const loadDiaryContent = async (date) => {
 };
 
 const formatDate = (dateInt) => {
+  if (!dateInt) return '';
   const s = dateInt.toString();
   if (s.length !== 8) return s;
   return `${s.substring(0, 4)}年${s.substring(4, 6)}月${s.substring(6, 8)}日`;
 };
 
 const getDayOfWeek = (dateInt) => {
+  if (!dateInt) return '';
   const s = dateInt.toString();
   if (s.length !== 8) return '';
   const dateObj = new Date(`${s.substring(0, 4)}-${s.substring(4, 6)}-${s.substring(6, 8)}`);
   return ['周日', '周一', '周二', '周三', '周四', '周五', '周六'][dateObj.getDay()];
 };
 
+onMounted(() => {
+  window.addEventListener('keydown', globalKeyHandler);
+});
+
 onUnmounted(() => {
   stopAutoSave();
+  window.removeEventListener('keydown', globalKeyHandler);
 });
 </script>
-
-
 
 <style>
 :root {
@@ -385,6 +472,7 @@ onUnmounted(() => {
   --input-bg: #f5f6f7;
   --border-color: #edebe9;
   --edit-theme: #3498db;
+  --danger-color: #e74c3c;
 }
 
 body {
@@ -511,14 +599,12 @@ button {
   font-family: inherit; width: 100%; transition: background 0.3s, font-size 0.2s;
 }
 
-/* 仅在编辑模式下显示背景和内边距 */
 .editing-active {
   background: rgba(255, 255, 255, 0.4);
   padding: 10px;
   border-radius: 8px;
 }
 
-/* 预览模式下完全透明且自适应 */
 .preview-active {
   background: transparent;
   overflow-y: auto;
@@ -529,10 +615,30 @@ button {
 .empty-state { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; color: var(--text-sub); }
 .empty-icon { font-size: 48px; margin-bottom: 20px; opacity: 0.2; }
 
-.fade-enter-active, .fade-leave-active { transition: all 0.3s ease; }
-.fade-enter-from { opacity: 0; transform: translateY(5px); }
-.fade-leave-to { opacity: 0; transform: translateY(-5px); }
-.error-msg { color: #e74c3c; font-size: 12px; margin-top: 15px; }
+/* 右键菜单样式 */
+.context-menu {
+  position: fixed;
+  background: white;
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  box-shadow: 0 10px 25px rgba(0,0,0,0.1);
+  padding: 6px;
+  z-index: 2000;
+  min-width: 140px;
+}
+.menu-item {
+  padding: 10px 14px;
+  font-size: 13px;
+  border-radius: 6px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  transition: background 0.2s;
+}
+.menu-item:hover { background: #f5f5f5; }
+.menu-item.delete { color: var(--danger-color); }
+.menu-item.delete:hover { background: rgba(231, 76, 60, 0.05); }
 
 .modal-overlay {
   position: fixed;
@@ -551,7 +657,9 @@ button {
   text-align: center; animation: slideUp 0.3s ease;
 }
 
-.modal h3 { margin-top: 0; margin-bottom: 20px; font-size: 18px; color: var(--primary-color); letter-spacing: 1px; }
+.modal h3 { margin-top: 0; margin-bottom: 12px; font-size: 18px; color: var(--primary-color); letter-spacing: 1px; }
+.modal-text { font-size: 14px; color: var(--text-sub); line-height: 1.5; margin-bottom: 25px; }
+
 .modal input[type="date"] {
   width: 100%; box-sizing: border-box; padding: 12px; margin-bottom: 25px;
   border: 1px solid var(--border-color); border-radius: 10px;
@@ -561,9 +669,15 @@ button {
 .modal input[type="date"]:focus { border-color: var(--primary-color); background: white; }
 
 .modal-actions { display: flex; gap: 12px; }
-.modal-actions button { flex: 1; padding: 10px; font-size: 14px; border-radius: 10px; transition: all 0.2s; }
+.modal-actions button { flex: 1; padding: 10px; font-size: 14px; border-radius: 10px; transition: all 0.2s; font-weight: 500; }
 .modal-actions button:first-child { background: #eee; color: #666; }
-.modal-actions button:last-child { background: var(--primary-color); color: white; }
+.modal-actions .danger-btn { background: var(--danger-color); color: white; }
+.modal-actions .danger-btn:hover { background: #c0392b; }
+
+.fade-enter-active, .fade-leave-active { transition: all 0.3s ease; }
+.fade-enter-from { opacity: 0; transform: translateY(5px); }
+.fade-leave-to { opacity: 0; transform: translateY(-5px); }
+.error-msg { color: #e74c3c; font-size: 12px; margin-top: 15px; }
 
 @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
 @keyframes slideUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }

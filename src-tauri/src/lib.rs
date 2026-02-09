@@ -103,6 +103,20 @@ fn save_diary_content(state: State<'_, States>, date: i64, content: String) -> R
     Ok(())
 }
 
+#[command]
+fn delete_diary(date: i64, state: State<'_, States>) -> Result<(), String> {
+    let db_lock = state.db.lock().unwrap();
+    let conn = db_lock.as_ref().ok_or("数据库未解锁")?;
+
+    conn.execute(
+        "DELETE FROM diary WHERE date = ?",
+        [date.to_string()],
+    )
+        .map_err(|e| format!("删除失败: {}", e))?;
+
+    Ok(())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run(args: Args) {
     let title = args
@@ -139,6 +153,7 @@ pub fn run(args: Args) {
             search_diary,
             get_diary_content,
             save_diary_content,
+            delete_diary,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application")
