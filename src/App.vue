@@ -30,7 +30,8 @@
               <h2>历程</h2>
               <div class="action-btns">
                 <span class="count">{{ dateList.length }} 篇</span>
-                <button @click="openNewDiaryModal" class="create-btn" title="撰写新篇章">
+                <button @click="openNewDiaryModal" class="create-btn" title="撰写新篇章"
+                  @contextmenu.prevent="showContextMenu($event, null, 'add')">
                   <span>+</span>
                 </button>
               </div>
@@ -52,7 +53,7 @@
                 :key="date"
                 class="date-card"
                 @click="handleDateClick(date)"
-                @contextmenu.prevent="showContextMenu($event, date)"
+                @contextmenu.prevent="showContextMenu($event, date, 'datelist')"
                 :class="{ 'active-card': selectedDate === date }"
             >
               <div class="calendar-box">
@@ -127,7 +128,11 @@
 
     <!-- 右键菜单 -->
     <div v-if="contextMenu.visible" class="context-menu" :style="{ top: contextMenu.y + 'px', left: contextMenu.x + 'px' }">
-      <div class="menu-item delete" @click="openConfirmDelete">
+      <div v-if="contextMenu.type === 'add'" class="menu-item" @click="createTodayDiary">
+        <span class="menu-icon">📅</span> 今日日记
+      </div>
+
+      <div v-if="contextMenu.type === 'datelist'" class="menu-item delete" @click="openConfirmDelete">
         <span class="menu-icon">🗑️</span> 删除日记
       </div>
     </div>
@@ -190,7 +195,8 @@ const contextMenu = ref({
   visible: false,
   x: 0,
   y: 0,
-  targetDate: null
+  targetDate: null,
+  type: '' // 'datelist' or 'new'
 });
 
 // 删除确认状态
@@ -322,12 +328,13 @@ const globalKeyHandler = (e) => {
 };
 
 // 显示右键菜单
-const showContextMenu = (e, date) => {
+const showContextMenu = (e, date, type) => {
   contextMenu.value = {
     visible: true,
     x: e.clientX,
     y: e.clientY,
-    targetDate: date
+    targetDate: date,
+    type: type
   };
 };
 
@@ -540,6 +547,37 @@ onUnmounted(() => {
   stopAutoSave();
   window.removeEventListener('keydown', globalKeyHandler);
 });
+
+const createTodayDiary = async () => {
+  const now = new Date();
+  const todayStr = now.getFullYear().toString() +
+      (now.getMonth() + 1).toString().padStart(2, '0') +
+      now.getDate().toString().padStart(2, '0');
+  const todayInt = parseInt(todayStr);
+
+  closeContextMenu();
+
+  // 如果已经存在，直接跳转
+  if (dateList.value.includes(todayInt)) {
+    await handleDateClick(todayInt);
+    return;
+  }
+
+  // 否则执行创建逻辑（复用 confirmNewDiary 的核心部分）
+  selectedDate.value = todayInt;
+  currentContent.value = '';
+  lastSavedContent.value = '';
+
+  try {
+    await invoke('save_diary_content', { date: todayInt, content: '' });
+    dateList.value = await invoke('search_diary', { queryStr: searchQuery.value });
+    isEditing.value = true;
+    startAutoSave();
+    nextTick(() => editorRef.value?.focus());
+  } catch (err) {
+    console.error("Failed to create today's diary:", err);
+  }
+};
 </script>
 
 <style>
