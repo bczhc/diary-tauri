@@ -84,9 +84,9 @@
 
               <div class="header-controls">
                 <div class="font-control">
-                  <button @click="adjustFontSize(-2)" title="减小字号">A-</button>
+                  <button @click="adjustFontSize(-1)" title="减小字号">A-</button>
                   <span class="font-size-label">{{ fontSize }}px</span>
-                  <button @click="adjustFontSize(2)" title="增大字号">A+</button>
+                  <button @click="adjustFontSize(1)" title="增大字号">A+</button>
                 </div>
 
                 <div
@@ -324,6 +324,13 @@ const globalKeyHandler = (e) => {
   if (e.key === 'e' && isUnlocked.value && !isEditing.value && !showNewDiaryModal.value && !showDeleteConfirm.value && selectedDate.value) {
     e.preventDefault();
     toggleEditMode();
+  }
+
+  if (e.ctrlKey && e.key === '=' && isUnlocked.value && !showNewDiaryModal.value && !showDeleteConfirm.value) {
+    adjustFontSize(1);
+  }
+  if (e.ctrlKey && e.key === '-' && isUnlocked.value && !showNewDiaryModal.value && !showDeleteConfirm.value) {
+    adjustFontSize(-1);
   }
 };
 
