@@ -293,22 +293,28 @@ const globalKeyHandler = (e) => {
       'w',
       's',
   ]
-  if (navigationKeys.indexOf(e.key) !== -1 && isUnlocked.value && !isEditing.value && !showNewDiaryModal.value && !showDeleteConfirm.value && selectedDate.value) {
-    let selectedIndex = dateList.value.indexOf(selectedDate.value);
-    let listLength = dateList.value.length;
-    switch (e.key) {
-      case 'ArrowRight':
-      case 'ArrowUp':
-      case 'w':
-        selectedIndex -= 1;
-        if (selectedIndex === -1) selectedIndex = 0;
-        break;
-      case 'ArrowLeft':
-      case 'ArrowDown':
-      case 's':
-        selectedIndex += 1;
-        if (selectedIndex === listLength) selectedIndex = listLength - 1;
-        break;
+  if (navigationKeys.indexOf(e.key) !== -1 && isUnlocked.value && !isEditing.value && !showNewDiaryModal.value && !showDeleteConfirm.value) {
+    let selectedIndex;
+    if (selectedDate.value === null) {
+      // when no diary date is selected, a navigation key will focus to the latest one;
+      selectedIndex = 0;
+    } else {
+      selectedIndex = dateList.value.indexOf(selectedDate.value);
+      let listLength = dateList.value.length;
+      switch (e.key) {
+        case 'ArrowRight':
+        case 'ArrowUp':
+        case 'w':
+          selectedIndex -= 1;
+          if (selectedIndex === -1) selectedIndex = 0;
+          break;
+        case 'ArrowLeft':
+        case 'ArrowDown':
+        case 's':
+          selectedIndex += 1;
+          if (selectedIndex === listLength) selectedIndex = listLength - 1;
+          break;
+      }
     }
     handleDateClick(dateList.value[selectedIndex]);
 
