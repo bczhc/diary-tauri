@@ -234,9 +234,46 @@ const handleTabSave = async () => {
 };
 
 const globalKeyHandler = (e) => {
+  console.log(e.key);
   if (e.key === 'Escape' && isUnlocked.value && !isEditing.value && !showNewDiaryModal.value && !showDeleteConfirm.value) {
     selectedDate.value = null;
     currentContent.value = '';
+  }
+  if (e.key === '/' && isUnlocked.value && !isEditing.value && !showNewDiaryModal.value && !showDeleteConfirm.value) {
+    e.preventDefault();
+    document.querySelector('.search-bar')?.querySelector('input')?.focus();
+  }
+  let navigationKeys = [
+      'ArrowLeft',
+      'ArrowRight',
+      'ArrowUp',
+      'ArrowDown',
+      'w',
+      's',
+  ]
+  if (navigationKeys.indexOf(e.key) !== -1 && isUnlocked.value && !isEditing.value && !showNewDiaryModal.value && !showDeleteConfirm.value && selectedDate.value) {
+    let selectedIndex = dateList.value.indexOf(selectedDate.value);
+    let listLength = dateList.value.length;
+    switch (e.key) {
+      case 'ArrowRight':
+      case 'ArrowUp':
+      case 'w':
+        selectedIndex -= 1;
+        if (selectedIndex === -1) selectedIndex = 0;
+        break;
+      case 'ArrowLeft':
+      case 'ArrowDown':
+      case 's':
+        selectedIndex += 1;
+        if (selectedIndex === listLength) selectedIndex = listLength - 1;
+        break;
+    }
+    handleDateClick(dateList.value[selectedIndex]);
+  }
+
+  if (e.key === 'e' && isUnlocked.value && !isEditing.value && !showNewDiaryModal.value && !showDeleteConfirm.value && selectedDate.value) {
+    e.preventDefault();
+    toggleEditMode();
   }
 };
 
