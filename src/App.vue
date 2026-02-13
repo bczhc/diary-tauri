@@ -269,6 +269,16 @@ const globalKeyHandler = (e) => {
         break;
     }
     handleDateClick(dateList.value[selectedIndex]);
+
+    nextTick(() => {
+      const activeItem = document.querySelector('.active-card');
+      if (activeItem) {
+        activeItem.scrollIntoView({
+          behavior: 'smooth', // 平滑滚动
+          block: 'nearest'    // 仅当不可见时滚动到最近边缘
+        });
+      }
+    });
   }
 
   if (e.key === 'e' && isUnlocked.value && !isEditing.value && !showNewDiaryModal.value && !showDeleteConfirm.value && selectedDate.value) {
