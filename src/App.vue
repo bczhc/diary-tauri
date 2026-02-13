@@ -680,7 +680,7 @@ button {
 .date-text { font-size: 13.5px; font-weight: 500; }
 .weekday-text { font-size: 11px; color: var(--text-sub); }
 
-.viewer { flex: 1; display: flex; flex-direction: column; background: var(--bg-color); }
+.viewer { flex: 1; display: flex; flex-direction: column; background: var(--bg-color); min-width: 0; }
 .editor-container {
   display: flex; flex-direction: column; height: 100%; padding: 40px;
   box-sizing: border-box; max-width: 900px; margin: 0 auto; width: 100%;
