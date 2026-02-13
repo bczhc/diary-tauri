@@ -243,7 +243,9 @@ watch(currentContent, (newVal) => {
     } else {
       displayWordCount.value = Array.from(newVal).length;
     }
-    recordHistory(currentContent.value);
+    if (isEditing.value) {
+      recordHistory(currentContent.value);
+    }
   }, 300);
 }, { immediate: true });
 
