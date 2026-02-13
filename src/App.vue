@@ -104,6 +104,7 @@
                 class="diary-textarea editing-active"
                 :style="{ fontSize: fontSize + 'px' }"
                 placeholder="开始记录今天的生活..."
+                @keydown="handleTextareaKeydown"
                 @keydown.tab.prevent="handleTabSave"
                 ref="editorRef"
             ></textarea>
@@ -196,6 +197,38 @@ const contextMenu = ref({
 const showDeleteConfirm = ref(false);
 const targetDeleteDate = ref(null);
 
+const history = ref([]);
+const historyIndex = ref(-1);
+
+// 记录历史
+const recordHistory = (content) => {
+  if (content === history.value[historyIndex.value]) return;
+  // 删除当前索引之后的记录（处理撤销后新输入的情况）
+  history.value = history.value.slice(0, historyIndex.value + 1);
+  history.value.push(content);
+  if (history.value.length > 50) history.value.shift(); // 限制栈大小
+  historyIndex.value = history.value.length - 1;
+};
+
+const handleTextareaKeydown = (e) => {
+  console.log('textarea keydown: ' + e.key);
+  if (e.ctrlKey && e.key === 'z') {
+    e.preventDefault();
+    if (historyIndex.value > 0) {
+      historyIndex.value--;
+      currentContent.value = history.value[historyIndex.value];
+    }
+  }
+  //  (重做)
+  if (e.ctrlKey && e.key === 'Z') {
+    e.preventDefault();
+    if (historyIndex.value < history.value.length - 1) {
+      historyIndex.value++;
+      currentContent.value = history.value[historyIndex.value];
+    }
+  }
+};
+
 watch(currentContent, (newVal) => {
   if (wordCountTimeout) clearTimeout(wordCountTimeout);
   wordCountTimeout = setTimeout(() => {
@@ -204,6 +237,7 @@ watch(currentContent, (newVal) => {
     } else {
       displayWordCount.value = Array.from(newVal).length;
     }
+    recordHistory(currentContent.value);
   }, 300);
 }, { immediate: true });
 
