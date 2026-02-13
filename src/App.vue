@@ -52,7 +52,7 @@
                 v-for="date in dateList"
                 :key="date"
                 class="date-card"
-                @click="handleDateClick(date)"
+                @click="handleDateSelect(date)"
                 @contextmenu.prevent="showContextMenu($event, date, 'datelist')"
                 :class="{ 'active-card': selectedDate === date }"
             >
@@ -216,6 +216,11 @@ const recordHistory = (content) => {
   historyIndex.value = history.value.length - 1;
 };
 
+const resetHistory = () => {
+  history.value = [];
+  historyIndex.value = -1;
+};
+
 const handleTextareaKeydown = (e) => {
   console.log('textarea keydown: ' + e.key);
   if (e.ctrlKey && e.key === 'z') {
@@ -316,7 +321,7 @@ const globalKeyHandler = (e) => {
           break;
       }
     }
-    handleDateClick(dateList.value[selectedIndex]);
+    handleDateSelect(dateList.value[selectedIndex]);
 
     nextTick(() => {
       const activeItem = document.querySelector('.active-card');
@@ -404,7 +409,7 @@ const confirmNewDiary = async () => {
   showNewDiaryModal.value = false;
 
   if (dateList.value.includes(formattedDate)) {
-    await handleDateClick(formattedDate);
+    await handleDateSelect(formattedDate);
     return;
   }
 
@@ -518,13 +523,14 @@ const stopAutoSave = () => {
   }
 };
 
-const handleDateClick = async (date) => {
+const handleDateSelect = async (date) => {
   if (selectedDate.value === date) return;
   if (isEditing.value) {
     await saveDiary();
     stopAutoSave();
     isEditing.value = false;
   }
+  resetHistory();
   await loadDiaryContent(date);
 };
 
@@ -574,7 +580,7 @@ const createTodayDiary = async () => {
 
   // 如果已经存在，直接跳转
   if (dateList.value.includes(todayInt)) {
-    await handleDateClick(todayInt);
+    await handleDateSelect(todayInt);
     return;
   }
 
